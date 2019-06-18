@@ -9,10 +9,11 @@
 #define EPv_Min 0
 #define EGeo_Min 0
 #define EBio_Min 0
-#define EBat_Min 1000 //Energy_Bat_Min = Ebat descarcare
+#define EBat_Min -3500 //Energy_Bat_Max = Ebat incarcare
+#define Es_Min 0
 #define EGeo_Max 1500
 #define EBio_Max 1500
-#define EBat_Max -3500 //Energy_Bat_Max = Ebat incarcare
+#define EBat_Max 1000
 #define ES_Limit 24000 //limita sistemului de energie
 
 //defineuri ptr costuri
@@ -73,7 +74,7 @@ double randParameter()
 
 bool battery_validation(int EBat)
 {
-	if ((EBat >= -3500) && (EBat <= 1000))
+	if ((EBat >= EBat_Min) && (EBat <= EBat_Max))
 		return true;
 	else
 		return false;
@@ -81,7 +82,7 @@ bool battery_validation(int EBat)
 
 bool systemEnergy_validation(int Es)
 {
-	if ((Es >= 0) && (Es <= ES_Limit))
+	if ((Es >= Es_Min) && (Es <= ES_Limit))
 		return true;
 	else
 		return false;
@@ -99,7 +100,8 @@ double calculateTotalCosts(unsigned int EPv[], unsigned int EGeo[], unsigned int
 
 void generateSolution()
 {
-	bool ok;
+	bool ok = false;
+	Es[0] = 20000;
 	for (unsigned int hour = 0; hour < 24; hour++)
 	{
 		ok = false;
@@ -110,7 +112,7 @@ void generateSolution()
 			EBio[hour] = randEBio();
 
 			EBat[hour] = ELoad[hour] - EPv[hour] - EGeo[hour] - EBio[hour] - EExcess;
-			if (battery_validation(EBat[hour] == true))
+			if (battery_validation(EBat[hour]) == true)
 			{
 				if (hour == 0)
 				{
@@ -142,19 +144,37 @@ unsigned int findMinimum(struct Memory populationMemory[])
 	return location;
 }
 
+unsigned int findMaximum(struct Memory populationMemory[])
+{
+	double max = populationMemory[0].objective_function;
+	unsigned int location = 0;
+	for (unsigned int j = 1; j < 500; j++)
+	{
+		if (populationMemory[j].objective_function > max)
+		{
+			max = populationMemory[j].objective_function;
+			location = j;
+		}
+	}
+	return location;
+}
+
 int main()
 {
-	unsigned int EPv_final[24], EGeo_final[24], EBio_final[24], EExcess_final = 0, location, ELoad_final[24];
+	unsigned int EPv_final[24], EGeo_final[24], EBio_final[24], EExcess_final = 0, location_max = 0, location_min = 0, ELoad_final[24], EPv_aux, EBio_aux, EGeo_aux;
 	int EBat_final[24], Es_final[24];
 	double predefined_parameter = 0.5, random_parameter;
 	double objective_function_final = 0.0;
 	struct Memory populationMemory[500];
+	bool EPv_ok = false, EGeo_ok = false, EBio_ok = false, EBat_ok = false, EsEBat_ok = false;
 
-	Es[0] = 20000;
 	srand(time(NULL));
 
-	for (unsigned int i = 0; i < 500; i++)
+	printf("Incep sa populez memoria cu 500 de solutii valide.\n");
+	printf("Am ajuns pe la iteratia: ");
+	for (unsigned int i = 0; i < 500; i++)//se populeaza cu 500 de solutii
 	{
+		printf("%d\n", i);
 		generateSolution();
 		//se copiaza in memorie 500 de solutii posibile(populatia initiala)
 		objective_function = calculateTotalCosts(EPv, EGeo, EBio, EBat, EExcess);
@@ -167,66 +187,126 @@ int main()
 		memcpy(populationMemory[i].Es, Es, sizeof(Es));
 		populationMemory[i].EExcess = EExcess;
 	}
-	
-	random_parameter = randParameter();//parametul random ptr comparare
 
+	printf("Incep sa utilizez SA.\n");
+	printf("Am ajuns pe la iteratia: ");
 	for (unsigned int i = 0; i < 500; i++)//500 de iteratii
 	{
-		if (random_parameter < predefined_parameter)//Q: daca o sa imi dea nr random = parametru predefinit?
+		printf("%d\n", i);
+		random_parameter = randParameter();//param random
+		if (random_parameter <= predefined_parameter)
 		{
-			location = findMinimum(populationMemory);
-			objective_function_final = populationMemory[location].objective_function;
-			memcpy(EPv_final, populationMemory[location].EPv, sizeof(populationMemory[location].EPv));
-			memcpy(EGeo_final, populationMemory[location].EGeo, sizeof(populationMemory[location].EGeo));
-			memcpy(EBio_final, populationMemory[location].EBio, sizeof(populationMemory[location].EBio));
-			memcpy(ELoad_final, populationMemory[location].ELoad, sizeof(populationMemory[location].ELoad));
-			memcpy(EBat_final, populationMemory[location].EBat, sizeof(populationMemory[location].EBat));
-			memcpy(Es_final, populationMemory[location].Es, sizeof(populationMemory[location].Es));
-			EExcess = populationMemory[location].EExcess;
+			location_max = findMaximum(populationMemory);
+			location_min = findMinimum(populationMemory);
+
+			for (unsigned int hour2 = 0; hour2 < 24; hour2++)
+			{
+				EsEBat_ok = false;
+				while (EsEBat_ok == false)
+				{
+					EGeo_ok = false;
+					EGeo_aux = populationMemory[location_max].EGeo[hour2];//memorare aux in caz de fail
+					while (EGeo_ok == false)
+					{
+						populationMemory[location_max].EGeo[hour2] = EGeo_aux + (rand() - rand()) * rand() * abs(EGeo_aux - populationMemory[location_min].EGeo[hour2]);
+						if ((populationMemory[location_max].EGeo[hour2] >= EGeo_Min) && (populationMemory[location_max].EGeo[hour2] <= EGeo_Max))
+						{
+							EGeo_ok = true;
+						}
+					}
+
+					EBio_ok = false;
+					EBio_aux = populationMemory[location_max].EBio[hour2];
+					while (EBio_ok == false)
+					{
+						populationMemory[location_max].EBio[hour2] = EBio_aux + (rand() - rand()) * rand() * abs(EBio_aux - populationMemory[location_min].EBio[hour2]);
+						if ((populationMemory[location_max].EBio[hour2] >= EBio_Min) && (populationMemory[location_max].EBio[hour2] <= EBio_Max))
+						{
+							EBio_ok = true;
+						}
+					}
+
+					EPv_ok = false;
+					EPv_aux = populationMemory[location_max].EPv[hour2];
+					while (EPv_ok == false)
+					{
+						populationMemory[location_max].EPv[hour2] = EPv_aux + (rand() - rand()) * rand() * abs(EPv_aux - populationMemory[location_min].EPv[hour2]);
+						if ((populationMemory[location_max].EPv[hour2] >= EPv_Min) && (populationMemory[location_max].EPv[hour2] <= EPv_Max[hour2]))
+						{
+							EPv_ok = true;
+						}
+					}
+
+					populationMemory[location_max].EBat[hour2] = populationMemory[location_max].ELoad[hour2] - populationMemory[location_max].EPv[hour2] - populationMemory[location_max].EGeo[hour2] - populationMemory[location_max].EBio[hour2] - populationMemory[location_max].EExcess;
+
+					if (battery_validation(populationMemory[location_max].EBat[hour2]) == true)
+					{
+						if (hour2 == 0)
+						{
+							EsEBat_ok = true;
+						}
+						else
+						{
+							populationMemory[location_max].Es[hour2] = populationMemory[location_max].Es[hour2 - 1] - populationMemory[location_max].EBat[hour2];
+							if (systemEnergy_validation(populationMemory[location_max].Es[hour2]) == true)
+								EsEBat_ok = true;
+						}
+					}
+				}
+			}
+			populationMemory[location_max].objective_function = calculateTotalCosts(populationMemory[location_max].EPv, populationMemory[location_max].EGeo, populationMemory[location_max].EBio, populationMemory[location_max].EBat, populationMemory[location_max].EExcess);
 		}
 		else
 		{
-			generateSolution();//creaza o solutie noua si o memoreaza
+			location_max = findMaximum(populationMemory);
+			generateSolution();
 			objective_function = calculateTotalCosts(EPv, EGeo, EBio, EBat, EExcess);
-			populationMemory[i].objective_function = objective_function;
-			memcpy(populationMemory[0].EPv, EPv, sizeof(EPv));
-			memcpy(populationMemory[0].EGeo, EGeo, sizeof(EGeo));
-			memcpy(populationMemory[0].EBio, EBio, sizeof(EBio));
-			memcpy(populationMemory[0].ELoad, ELoad, sizeof(ELoad));
-			memcpy(populationMemory[0].EBat, EBat, sizeof(EBat));
-			memcpy(populationMemory[0].Es, Es, sizeof(Es));
-			populationMemory[0].EExcess = EExcess;
+			if (objective_function < populationMemory[location_max].objective_function)//se compara noua solutie generata random cu cea mai "rea" din memorie
+			{
+				populationMemory[location_max].objective_function = objective_function;
+				memcpy(populationMemory[location_max].EPv, EPv, sizeof(EPv));
+				memcpy(populationMemory[location_max].EGeo, EGeo, sizeof(EGeo));
+				memcpy(populationMemory[location_max].EBio, EBio, sizeof(EBio));
+				memcpy(populationMemory[location_max].ELoad, ELoad, sizeof(ELoad));
+				memcpy(populationMemory[location_max].EBat, EBat, sizeof(EBat));
+				memcpy(populationMemory[location_max].Es, Es, sizeof(Es));
+				populationMemory[location_max].EExcess = EExcess;
 
+			}
 		}
 	}
 
-	//for (unsigned int i = 0; i < 24; i++)
-	//{
-	//	printf("Epv[%d]: %d", i, populationMemory[30].EPv[i]);
-	//	printf("\n");
-	//	printf("Egeo[%d]: %d", i, populationMemory[30].EGeo[i]);
-	//	printf("\n");
-	//	printf("EBio[%d]: %d", i, populationMemory[30].EBio[i]);
-	//	printf("\n");
-	//	printf("ELoad[%d]: %d", i, populationMemory[30].ELoad[i]);
-	//	printf("\n");
-	//	printf("EBat[%d]: %d", i, populationMemory[30].EBat[i]);
-	//	printf("\n");
-	//	printf("Es[%d]: %d", i, populationMemory[30].Es[i]);
-	//	printf("\n");
-	//}
-	printf("Functia obiectiv: %f\n", populationMemory[30].objective_function);
-	printf("param random: %f", random_parameter);
-
+	printf("Am terminat de executat SA. Memorez si afisez solutia finala.\n");
+	//Se memoreaza rezultatul final
+	location_min = findMinimum(populationMemory);
+	objective_function_final = populationMemory[location_min].objective_function;
+	memcpy(EPv_final, populationMemory[location_min].EPv, sizeof(populationMemory[location_min].EPv));
+	memcpy(EGeo_final, populationMemory[location_min].EGeo, sizeof(populationMemory[location_min].EGeo));
+	memcpy(EBio_final, populationMemory[location_min].EBio, sizeof(populationMemory[location_min].EBio));
+	memcpy(ELoad_final, populationMemory[location_min].ELoad, sizeof(populationMemory[location_min].ELoad));
+	memcpy(EBat_final, populationMemory[location_min].EBat, sizeof(populationMemory[location_min].EBat));
+	memcpy(Es_final, populationMemory[location_min].Es, sizeof(populationMemory[location_min].Es));
+	EExcess_final = populationMemory[location_min].EExcess;
+	
+	//Se afiseaza rezultatul final
+	printf("Rezultatul final pentru luna decembrie: \n");
+	printf("Cost: %f\n", objective_function_final);
+	for (unsigned int i = 0; i < 24; i++)
+	{
+		printf("EPv[%d]: %d", i, EPv_final[i]);
+		printf("\n");
+		printf("EGeo[%d]: %d", i, EGeo_final[i]);
+		printf("\n");
+		printf("EBio[%d]: %d", i, EBio_final[i]);
+		printf("\n");
+		printf("ELoad[%d]: %d", i,ELoad_final[i]);
+		printf("\n");
+		printf("EBat[%d]: %d", i, EBat_final[i]);
+		printf("\n");
+		printf("Es[%d]: %d", i, Es_final[i]);
+	}
 	return (0);
 }
-/* 1. Am memorat 500 de solutii initiale. Din pacate daca depasesc 20 de iteratii consola imi ramane blocata cu
-semnul _(ca si cum ar cauta solutii valide in continuare). Tin sa mentionez ca momentan am un laptop cu 4gb ram 
-si HDD cu RPM specifice unui laptop
-2. Parametrul random ce v a fi comparat cu parametrul predefinit(= 0.5) este setat doar o singura data
-3. Memorarea solutiei finale se realizeaza incepand de la linia 178.
-*Oare ar trebui sa verific unde se afla costul minim in memorie, iar mai apoi solutia noua generata sa 
-NU o memorez unde se afla costul minim din memorie?
-*Ar trebui sa mai verific inca odata costul minim din memorie si sa o memorez in variabila solutiei finale dupa ce
-se realizeaza cele 500 de iteratii?
+/*
+Dureaza 3h sa se populeze cu 500 de solutii,dar cand intra in al doilea for nu mai trece de iteratia 41...
 */
