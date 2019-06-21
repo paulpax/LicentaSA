@@ -31,7 +31,7 @@ struct Memory
 	unsigned int EGeo[24];
 	unsigned int EBio[24];
 	unsigned int ELoad[24];
-	unsigned int EExcess;
+	unsigned int EExcess[24];
 	int EBat[24];
 	int Es[24];
 };
@@ -40,7 +40,7 @@ struct Memory
 const unsigned int EPv_Max[24] = { 0, 0, 0, 0, 0, 0, 0, 0, 300, 643, 917, 1059, 1038, 859, 562, 217, 0, 0, 0, 0, 0, 0, 0, 0 };//EPV MAX ptr cele 24 ore(doar ptr dec)
 const unsigned int ELoad[24] = { 0, 250, 2800, 2700, 0, 300, 600, 3400, 3500, 600, 600, 100, 200, 0, 0, 300, 0, 200, 3500, 3600, 3600, 3700, 3500, 0 };//Eload ptr cele 24ore
 
-unsigned int EPv[24], EGeo[24], EBio[24], EExcess = 0;
+unsigned int EPv[24], EGeo[24], EBio[24], EExcess[24] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 int EBat[24], Es[24];
 double objective_function = 0.0;
 
@@ -72,13 +72,13 @@ double randParameter()
 	return random;
 }
 
-bool battery_validation(int EBat)
-{
-	if ((EBat >= EBat_Min) && (EBat <= EBat_Max))
-		return true;
-	else
-		return false;
-}
+//bool battery_validation(int EBat)
+//{
+//	if ((EBat >= EBat_Min) && (EBat <= EBat_Max))
+//		return true;
+//	else
+//		return false;
+//}
 
 bool systemEnergy_validation(int Es)
 {
@@ -88,12 +88,12 @@ bool systemEnergy_validation(int Es)
 		return false;
 }
 
-double calculateTotalCosts(unsigned int EPv[], unsigned int EGeo[], unsigned int EBio[], int EBat[], unsigned int EExcess)
+double calculateTotalCosts(unsigned int EPv[], unsigned int EGeo[], unsigned int EBio[], int EBat[], unsigned int EExcess[])
 {
 	double sum = 0.0;
 	for (unsigned int hour = 0; hour < 24; hour++)
 	{
-		sum = sum + ((EPv[hour] * CPv) + (EGeo[hour] * CGeo) + (EBio[hour] * CBio) + (EBat[hour] * CBat) + (EExcess * CExcess));
+		sum = sum + ((EPv[hour] * CPv) + (EGeo[hour] * CGeo) + (EBio[hour] * CBio) + (EBat[hour] * CBat) + (EExcess[hour] * CExcess));
 	}
 	return sum;
 }
@@ -111,19 +111,29 @@ void generateSolution()
 			EGeo[hour] = randEGeo();
 			EBio[hour] = randEBio();
 
-			EBat[hour] = ELoad[hour] - EPv[hour] - EGeo[hour] - EBio[hour] - EExcess;
-			if (battery_validation(EBat[hour]) == true)
+			EBat[hour] = ELoad[hour] - EPv[hour] - EGeo[hour] - EBio[hour] - EExcess[hour];
+
+			EExcess[hour] = 0;
+			if (EBat[hour] < EBat_Min)
 			{
-				if (hour == 0)
-				{
+				EExcess[hour] = (EBat[hour] - EBat_Min) * (-1);//ptr a avea valoare pozitiva
+				EBat[hour] = EBat_Min;
+			}
+			if (EBat[hour] > EBat_Max)
+			{
+				EExcess[hour] = EBat[hour] - EBat_Max;
+				EBat[hour] = EBat_Max;
+			}
+
+			if (hour == 0)
+			{
+				ok = true;
+			}
+			else
+			{
+				Es[hour] = Es[hour - 1] - EBat[hour];
+				if (systemEnergy_validation(Es[hour]) == true)
 					ok = true;
-				}
-				else
-				{
-					Es[hour] = Es[hour - 1] - EBat[hour];
-					if (systemEnergy_validation(Es[hour]) == true)
-						ok = true;
-				}
 			}
 		}
 	}
@@ -161,14 +171,22 @@ unsigned int findMaximum(struct Memory populationMemory[])
 
 int main()
 {
-	unsigned int EPv_final[24], EGeo_final[24], EBio_final[24], EExcess_final = 0, location_max = 0, location_min = 0, ELoad_final[24], EPv_aux, EBio_aux, EGeo_aux;
+	unsigned int EPv_final[24], EGeo_final[24], EBio_final[24], EExcess_final[24], location_max = 0, location_min = 0, ELoad_final[24];
 	int EBat_final[24], Es_final[24];
 	double predefined_parameter = 0.5, random_parameter;
 	double objective_function_final = 0.0;
 	struct Memory populationMemory[500];
-	bool EPv_ok = false, EGeo_ok = false, EBio_ok = false, EBat_ok = false, EsEBat_ok = false;
+	bool Es_ok = false;
 
 	srand(time(NULL));
+
+	FILE *f;
+	f = fopen("rezultat.txt", "w");
+	if (f == NULL)
+	{
+		printf("Eroare la deschierea fisierului rezultat.txt!");
+		exit(1);
+	}
 
 	printf("Incep sa populez memoria cu 500 de solutii valide.\n");
 	printf("Am ajuns pe la iteratia: ");
@@ -185,7 +203,7 @@ int main()
 		memcpy(populationMemory[i].ELoad, ELoad, sizeof(ELoad));
 		memcpy(populationMemory[i].EBat, EBat, sizeof(EBat));
 		memcpy(populationMemory[i].Es, Es, sizeof(Es));
-		populationMemory[i].EExcess = EExcess;
+		memcpy(populationMemory[i].EExcess, EExcess, sizeof(EExcess));
 	}
 
 	printf("Incep sa utilizez SA.\n");
@@ -201,56 +219,62 @@ int main()
 
 			for (unsigned int hour2 = 0; hour2 < 24; hour2++)
 			{
-				EsEBat_ok = false;
-				while (EsEBat_ok == false)
+				Es_ok = false;
+				while (Es_ok == false)
 				{
-					EGeo_ok = false;
-					EGeo_aux = populationMemory[location_max].EGeo[hour2];//memorare aux in caz de fail
-					while (EGeo_ok == false)
+					populationMemory[location_max].EGeo[hour2] = populationMemory[location_max].EGeo[hour2] + (randParameter() - randParameter()) * randParameter() * abs(populationMemory[location_max].EGeo[hour2] - populationMemory[location_min].EGeo[hour2]);
+					if (populationMemory[location_max].EGeo[hour2] <= EGeo_Min)
 					{
-						populationMemory[location_max].EGeo[hour2] = EGeo_aux + (rand() - rand()) * rand() * abs(EGeo_aux - populationMemory[location_min].EGeo[hour2]);
-						if ((populationMemory[location_max].EGeo[hour2] >= EGeo_Min) && (populationMemory[location_max].EGeo[hour2] <= EGeo_Max))
-						{
-							EGeo_ok = true;
-						}
+						populationMemory[location_max].EGeo[hour2] = EGeo_Min;
+					}
+					if (populationMemory[location_max].EGeo[hour2] >= EGeo_Max)
+					{
+						populationMemory[location_max].EGeo[hour2] = EGeo_Max;
 					}
 
-					EBio_ok = false;
-					EBio_aux = populationMemory[location_max].EBio[hour2];
-					while (EBio_ok == false)
+					populationMemory[location_max].EBio[hour2] = populationMemory[location_max].EBio[hour2] + (randParameter() - randParameter()) * randParameter() * abs(populationMemory[location_max].EBio[hour2] - populationMemory[location_min].EBio[hour2]);
+					if (populationMemory[location_max].EBio[hour2] <= EBio_Min)
 					{
-						populationMemory[location_max].EBio[hour2] = EBio_aux + (rand() - rand()) * rand() * abs(EBio_aux - populationMemory[location_min].EBio[hour2]);
-						if ((populationMemory[location_max].EBio[hour2] >= EBio_Min) && (populationMemory[location_max].EBio[hour2] <= EBio_Max))
-						{
-							EBio_ok = true;
-						}
+						populationMemory[location_max].EBio[hour2] = EBio_Min;
+					}
+					if (populationMemory[location_max].EBio[hour2] >= EBio_Max)
+					{
+						populationMemory[location_max].EBio[hour2] = EBio_Max;
 					}
 
-					EPv_ok = false;
-					EPv_aux = populationMemory[location_max].EPv[hour2];
-					while (EPv_ok == false)
+					populationMemory[location_max].EPv[hour2] = populationMemory[location_max].EPv[hour2] + (randParameter() - randParameter()) * randParameter() * abs(populationMemory[location_max].EPv[hour2] - populationMemory[location_min].EPv[hour2]);
+					if (populationMemory[location_max].EPv[hour2] <= EPv_Min)
 					{
-						populationMemory[location_max].EPv[hour2] = EPv_aux + (rand() - rand()) * rand() * abs(EPv_aux - populationMemory[location_min].EPv[hour2]);
-						if ((populationMemory[location_max].EPv[hour2] >= EPv_Min) && (populationMemory[location_max].EPv[hour2] <= EPv_Max[hour2]))
-						{
-							EPv_ok = true;
-						}
+						populationMemory[location_max].EPv[hour2] = EPv_Min;
+					}
+					if (populationMemory[location_max].EPv[hour2] >= EPv_Max[hour2])
+					{
+						populationMemory[location_max].EPv[hour2] = EPv_Max[hour2];
 					}
 
-					populationMemory[location_max].EBat[hour2] = populationMemory[location_max].ELoad[hour2] - populationMemory[location_max].EPv[hour2] - populationMemory[location_max].EGeo[hour2] - populationMemory[location_max].EBio[hour2] - populationMemory[location_max].EExcess;
+					populationMemory[location_max].EBat[hour2] = populationMemory[location_max].ELoad[hour2] - populationMemory[location_max].EPv[hour2] - populationMemory[location_max].EGeo[hour2] - populationMemory[location_max].EBio[hour2] - populationMemory[location_max].EExcess[hour2];
 
-					if (battery_validation(populationMemory[location_max].EBat[hour2]) == true)
+					populationMemory[location_max].EExcess[hour2] = 0;
+					if (populationMemory[location_max].EBat[hour2] < EBat_Min)
 					{
-						if (hour2 == 0)
-						{
-							EsEBat_ok = true;
-						}
-						else
-						{
-							populationMemory[location_max].Es[hour2] = populationMemory[location_max].Es[hour2 - 1] - populationMemory[location_max].EBat[hour2];
-							if (systemEnergy_validation(populationMemory[location_max].Es[hour2]) == true)
-								EsEBat_ok = true;
-						}
+						populationMemory[location_max].EExcess[hour2] = (populationMemory[location_max].EBat[hour2] - EBat_Min) * (-1);//ptr a avea valoare pozitiva
+						populationMemory[location_max].EBat[hour2] = EBat_Min;
+					}
+					if (populationMemory[location_max].EBat[hour2] > EBat_Max)
+					{
+						populationMemory[location_max].EExcess[hour2] = populationMemory[location_max].EBat[hour2] - EBat_Max;
+						populationMemory[location_max].EBat[hour2] = EBat_Max;
+					}
+
+					if (hour2 == 0)
+					{
+						Es_ok = true;
+					}
+					else
+					{
+						populationMemory[location_max].Es[hour2] = populationMemory[location_max].Es[hour2 - 1] - populationMemory[location_max].EBat[hour2];
+						if (systemEnergy_validation(populationMemory[location_max].Es[hour2]) == true)
+							Es_ok = true;
 					}
 				}
 			}
@@ -270,8 +294,7 @@ int main()
 				memcpy(populationMemory[location_max].ELoad, ELoad, sizeof(ELoad));
 				memcpy(populationMemory[location_max].EBat, EBat, sizeof(EBat));
 				memcpy(populationMemory[location_max].Es, Es, sizeof(Es));
-				populationMemory[location_max].EExcess = EExcess;
-
+				memcpy(populationMemory[location_max].EExcess, EExcess, sizeof(EExcess));
 			}
 		}
 	}
@@ -286,27 +309,26 @@ int main()
 	memcpy(ELoad_final, populationMemory[location_min].ELoad, sizeof(populationMemory[location_min].ELoad));
 	memcpy(EBat_final, populationMemory[location_min].EBat, sizeof(populationMemory[location_min].EBat));
 	memcpy(Es_final, populationMemory[location_min].Es, sizeof(populationMemory[location_min].Es));
-	EExcess_final = populationMemory[location_min].EExcess;
-	
+	memcpy(EExcess_final, populationMemory[location_min].EExcess, sizeof(populationMemory[location_min].EExcess));
+
 	//Se afiseaza rezultatul final
 	printf("Rezultatul final pentru luna decembrie: \n");
+	fprintf(f, "Rezultatul final pentru luna decembrie: \n");
 	printf("Cost: %f\n", objective_function_final);
+	fprintf(f, "Cost: %f\n", objective_function_final);
+	printf("Hour:|\tEPv:|\tEGeo:|\tEBio:|\tEBat:|\tEExcess:|\tEs:|\tELoad:|\n");
+	fprintf(f, "Hour:|\tEPv:|\tEGeo:|\tEBio:|\tEBat:|\tEExcess:|\tEs:|\tELoad:|\n");
 	for (unsigned int i = 0; i < 24; i++)
 	{
-		printf("EPv[%d]: %d", i, EPv_final[i]);
+		printf("%d|\t%d|\t%d|\t%d|\t%d|\t%d|\t%d|\t%d|\t", i + 1, EPv_final[i], EGeo_final[i], EBio_final[i], EBat_final[i], EExcess_final[i], Es_final[i], ELoad_final[i]);
 		printf("\n");
-		printf("EGeo[%d]: %d", i, EGeo_final[i]);
-		printf("\n");
-		printf("EBio[%d]: %d", i, EBio_final[i]);
-		printf("\n");
-		printf("ELoad[%d]: %d", i,ELoad_final[i]);
-		printf("\n");
-		printf("EBat[%d]: %d", i, EBat_final[i]);
-		printf("\n");
-		printf("Es[%d]: %d", i, Es_final[i]);
+		fprintf(f, "%d|\t%d|\t%d|\t%d|\t%d|\t%d|\t%d|\t%d|\t", i + 1, EPv_final[i], EGeo_final[i], EBio_final[i], EBat_final[i], EExcess_final[i], Es_final[i], ELoad_final[i]);
+		fprintf(f, "\n");
 	}
+
+	fclose(f);
 	return (0);
 }
 /*
-Dureaza 3h sa se populeze cu 500 de solutii,dar cand intra in al doilea for nu mai trece de iteratia 41...
+Se bloccheaza la iteratia 64 la generarea solutiilor.
 */
