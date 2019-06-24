@@ -80,13 +80,13 @@ double randParameter()
 //		return false;
 //}
 
-bool systemEnergy_validation(int Es)
-{
-	if ((Es >= Es_Min) && (Es <= ES_Limit))
-		return true;
-	else
-		return false;
-}
+//bool systemEnergy_validation(int Es)
+//{
+//	if ((Es >= Es_Min) && (Es <= ES_Limit))
+//		return true;
+//	else
+//		return false;
+//}
 
 double calculateTotalCosts(unsigned int EPv[], unsigned int EGeo[], unsigned int EBio[], int EBat[], unsigned int EExcess[])
 {
@@ -100,42 +100,28 @@ double calculateTotalCosts(unsigned int EPv[], unsigned int EGeo[], unsigned int
 
 void generateSolution()
 {
-	bool ok = false;
 	Es[0] = 20000;
 	for (unsigned int hour = 0; hour < 24; hour++)
 	{
-		ok = false;
-		while (ok == false)
+		EPv[hour] = randEPv(hour);
+		EGeo[hour] = randEGeo();
+		EBio[hour] = randEBio();
+
+		EBat[hour] = ELoad[hour] - (EPv[hour] + EGeo[hour] + EBio[hour] + EExcess[hour]);
+
+		EExcess[hour] = 0;
+		if (EBat[hour] < EBat_Min)
 		{
-			EPv[hour] = randEPv(hour);
-			EGeo[hour] = randEGeo();
-			EBio[hour] = randEBio();
-
-			EBat[hour] = ELoad[hour] - EPv[hour] - EGeo[hour] - EBio[hour] - EExcess[hour];
-
-			EExcess[hour] = 0;
-			if (EBat[hour] < EBat_Min)
-			{
-				EExcess[hour] = (EBat[hour] - EBat_Min) * (-1);//ptr a avea valoare pozitiva
-				EBat[hour] = EBat_Min;
-			}
-			if (EBat[hour] > EBat_Max)
-			{
-				EExcess[hour] = EBat[hour] - EBat_Max;
-				EBat[hour] = EBat_Max;
-			}
-
-			if (hour == 0)
-			{
-				ok = true;
-			}
-			else
-			{
-				Es[hour] = Es[hour - 1] - EBat[hour];
-				if (systemEnergy_validation(Es[hour]) == true)
-					ok = true;
-			}
+			EExcess[hour] = (EBat[hour] - EBat_Min) * (-1);//ptr a avea valoare pozitiva
+			EBat[hour] = EBat_Min;
 		}
+		if (EBat[hour] > EBat_Max)
+		{
+			EExcess[hour] = EBat[hour] - EBat_Max;
+			EBat[hour] = EBat_Max;
+		}
+
+		Es[hour] = Es[hour - 1] - EBat[hour];
 	}
 }
 
@@ -176,7 +162,6 @@ int main()
 	double predefined_parameter = 0.5, random_parameter;
 	double objective_function_final = 0.0;
 	struct Memory populationMemory[500];
-	bool Es_ok = false;
 
 	srand(time(NULL));
 
@@ -219,64 +204,51 @@ int main()
 
 			for (unsigned int hour2 = 0; hour2 < 24; hour2++)
 			{
-				Es_ok = false;
-				while (Es_ok == false)
+				populationMemory[location_max].EGeo[hour2] = populationMemory[location_max].EGeo[hour2] + (randParameter() - randParameter()) * randParameter() * abs(populationMemory[location_max].EGeo[hour2] - populationMemory[location_min].EGeo[hour2]);
+				if (populationMemory[location_max].EGeo[hour2] <= EGeo_Min)
 				{
-					populationMemory[location_max].EGeo[hour2] = populationMemory[location_max].EGeo[hour2] + (randParameter() - randParameter()) * randParameter() * abs(populationMemory[location_max].EGeo[hour2] - populationMemory[location_min].EGeo[hour2]);
-					if (populationMemory[location_max].EGeo[hour2] <= EGeo_Min)
-					{
-						populationMemory[location_max].EGeo[hour2] = EGeo_Min;
-					}
-					if (populationMemory[location_max].EGeo[hour2] >= EGeo_Max)
-					{
-						populationMemory[location_max].EGeo[hour2] = EGeo_Max;
-					}
-
-					populationMemory[location_max].EBio[hour2] = populationMemory[location_max].EBio[hour2] + (randParameter() - randParameter()) * randParameter() * abs(populationMemory[location_max].EBio[hour2] - populationMemory[location_min].EBio[hour2]);
-					if (populationMemory[location_max].EBio[hour2] <= EBio_Min)
-					{
-						populationMemory[location_max].EBio[hour2] = EBio_Min;
-					}
-					if (populationMemory[location_max].EBio[hour2] >= EBio_Max)
-					{
-						populationMemory[location_max].EBio[hour2] = EBio_Max;
-					}
-
-					populationMemory[location_max].EPv[hour2] = populationMemory[location_max].EPv[hour2] + (randParameter() - randParameter()) * randParameter() * abs(populationMemory[location_max].EPv[hour2] - populationMemory[location_min].EPv[hour2]);
-					if (populationMemory[location_max].EPv[hour2] <= EPv_Min)
-					{
-						populationMemory[location_max].EPv[hour2] = EPv_Min;
-					}
-					if (populationMemory[location_max].EPv[hour2] >= EPv_Max[hour2])
-					{
-						populationMemory[location_max].EPv[hour2] = EPv_Max[hour2];
-					}
-
-					populationMemory[location_max].EBat[hour2] = populationMemory[location_max].ELoad[hour2] - populationMemory[location_max].EPv[hour2] - populationMemory[location_max].EGeo[hour2] - populationMemory[location_max].EBio[hour2] - populationMemory[location_max].EExcess[hour2];
-
-					populationMemory[location_max].EExcess[hour2] = 0;
-					if (populationMemory[location_max].EBat[hour2] < EBat_Min)
-					{
-						populationMemory[location_max].EExcess[hour2] = (populationMemory[location_max].EBat[hour2] - EBat_Min) * (-1);//ptr a avea valoare pozitiva
-						populationMemory[location_max].EBat[hour2] = EBat_Min;
-					}
-					if (populationMemory[location_max].EBat[hour2] > EBat_Max)
-					{
-						populationMemory[location_max].EExcess[hour2] = populationMemory[location_max].EBat[hour2] - EBat_Max;
-						populationMemory[location_max].EBat[hour2] = EBat_Max;
-					}
-
-					if (hour2 == 0)
-					{
-						Es_ok = true;
-					}
-					else
-					{
-						populationMemory[location_max].Es[hour2] = populationMemory[location_max].Es[hour2 - 1] - populationMemory[location_max].EBat[hour2];
-						if (systemEnergy_validation(populationMemory[location_max].Es[hour2]) == true)
-							Es_ok = true;
-					}
+					populationMemory[location_max].EGeo[hour2] = EGeo_Min;
 				}
+				if (populationMemory[location_max].EGeo[hour2] >= EGeo_Max)
+				{
+					populationMemory[location_max].EGeo[hour2] = EGeo_Max;
+				}
+
+				populationMemory[location_max].EBio[hour2] = populationMemory[location_max].EBio[hour2] + (randParameter() - randParameter()) * randParameter() * abs(populationMemory[location_max].EBio[hour2] - populationMemory[location_min].EBio[hour2]);
+				if (populationMemory[location_max].EBio[hour2] <= EBio_Min)
+				{
+					populationMemory[location_max].EBio[hour2] = EBio_Min;
+				}
+				if (populationMemory[location_max].EBio[hour2] >= EBio_Max)
+				{
+					populationMemory[location_max].EBio[hour2] = EBio_Max;
+				}
+
+				populationMemory[location_max].EPv[hour2] = populationMemory[location_max].EPv[hour2] + (randParameter() - randParameter()) * randParameter() * abs(populationMemory[location_max].EPv[hour2] - populationMemory[location_min].EPv[hour2]);
+				if (populationMemory[location_max].EPv[hour2] <= EPv_Min)
+				{
+					populationMemory[location_max].EPv[hour2] = EPv_Min;
+				}
+				if (populationMemory[location_max].EPv[hour2] >= EPv_Max[hour2])
+				{
+					populationMemory[location_max].EPv[hour2] = EPv_Max[hour2];
+				}
+
+				populationMemory[location_max].EBat[hour2] = populationMemory[location_max].ELoad[hour2] - (populationMemory[location_max].EPv[hour2] + populationMemory[location_max].EGeo[hour2] + populationMemory[location_max].EBio[hour2] + populationMemory[location_max].EExcess[hour2]);
+
+				populationMemory[location_max].EExcess[hour2] = 0;
+				if (populationMemory[location_max].EBat[hour2] < EBat_Min)
+				{
+					populationMemory[location_max].EExcess[hour2] = (populationMemory[location_max].EBat[hour2] - EBat_Min) * (-1);//ptr a avea valoare pozitiva
+					populationMemory[location_max].EBat[hour2] = EBat_Min;
+				}
+				if (populationMemory[location_max].EBat[hour2] > EBat_Max)
+				{
+					populationMemory[location_max].EExcess[hour2] = populationMemory[location_max].EBat[hour2] - EBat_Max;
+					populationMemory[location_max].EBat[hour2] = EBat_Max;
+				}
+
+				populationMemory[location_max].Es[hour2] = populationMemory[location_max].Es[hour2 - 1] - populationMemory[location_max].EBat[hour2];
 			}
 			populationMemory[location_max].objective_function = calculateTotalCosts(populationMemory[location_max].EPv, populationMemory[location_max].EGeo, populationMemory[location_max].EBio, populationMemory[location_max].EBat, populationMemory[location_max].EExcess);
 		}
@@ -329,6 +301,3 @@ int main()
 	fclose(f);
 	return (0);
 }
-/*
-Se bloccheaza la iteratia 64 la generarea solutiilor.
-*/
